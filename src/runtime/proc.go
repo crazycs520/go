@@ -4074,6 +4074,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	newg.gopc = callerpc
 	newg.ancestors = saveAncestors(callergp)
 	newg.startpc = fn.fn
+
 	if _g_.m.curg != nil {
 		newg.labels = _g_.m.curg.labels
 	}
@@ -4092,6 +4093,15 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	newg.goid = int64(_p_.goidcache)
 	_p_.goidcache++
+
+	// BEGIN - CockroachDB tweak
+	if _g_.m.curg != nil {
+		newg.paniconfault = _g_.m.curg.paniconfault
+	} else {
+		newg.paniconfault = GetDefaultPanicOnFault()
+	}
+	// END - CockroachDB tweak
+
 	if raceenabled {
 		newg.racectx = racegostart(callerpc)
 	}
