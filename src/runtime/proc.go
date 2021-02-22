@@ -2537,6 +2537,8 @@ func execute(gp *g, inheritTime bool) {
 		_g_.m.p.ptr().schedtick++
 	}
 	// BEGIN - CockroachDB tweaks
+	// Accounting for the new G, the one we're scheduling into.
+	gp.lastSchedTime = nanotime()
 	if gp.taskGroupCtx != nil {
 		atomic.Xadd64(&gp.taskGroupCtx.schedtick, 1)
 	}
@@ -3184,6 +3186,15 @@ top:
 // call schedule to restart the scheduling of goroutines on this m.
 func dropg() {
 	_g_ := getg()
+
+	// BEGIN - CockroachDB tweaks
+	// Accounting for the past G, the one we're scheduling away from.
+	if _g_.m.curg != nil && _g_.m.curg.taskGroupCtx != nil {
+		endTickTime := nanotime()
+		lastTime := _g_.m.curg.lastSchedTime
+		atomic.Xadd64(&_g_.m.curg.taskGroupCtx.nanos, endTickTime-lastTime)
+	}
+	// END - CockroachDB tweaks
 
 	setMNoWB(&_g_.m.curg.m, nil)
 	setGNoWB(&_g_.m.curg, nil)
