@@ -751,9 +751,9 @@ func (h *mheap) reclaim(npage uintptr) {
 	if trace.enabled {
 		traceGCSweepStart()
 	}
-	//if stats.enabled {
-	//	getg().m.curg.stats.recordGCSweepStart()
-	//}
+	if stats.enabled {
+		getg().m.curg.stats.recordGCSweepStart()
+	}
 
 	arenas := h.sweepArenas
 	locked := false
@@ -802,9 +802,9 @@ func (h *mheap) reclaim(npage uintptr) {
 	if trace.enabled {
 		traceGCSweepDone()
 	}
-	//if stats.enabled {
-	//	getg().m.curg.stats.recordGCSweepDone()
-	//}
+	if stats.enabled {
+		getg().m.curg.stats.recordGCSweepDone()
+	}
 	releasem(mp)
 }
 

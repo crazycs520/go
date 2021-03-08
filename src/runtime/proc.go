@@ -327,10 +327,6 @@ func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason w
 		throw("gopark: bad g status")
 	}
 
-	//if stats.enabled {
-	//	gp.stats.recordGoPark(traceEv)
-	//}
-
 	mp.waitlock = lock
 	mp.waitunlockf = unlockf
 	gp.waitreason = reason
@@ -3291,6 +3287,10 @@ func park_m(gp *g) {
 		traceGoPark(_g_.m.waittraceev, _g_.m.waittraceskip)
 	}
 
+	if stats.enabled {
+		gp.stats.recordGoPark(_g_.m.waittraceev)
+	}
+
 	casgstatus(gp, _Grunning, _Gwaiting)
 	dropg()
 
@@ -3702,9 +3702,9 @@ func entersyscallblock_handoff() {
 		traceGoSysCall()
 		traceGoSysBlock(getg().m.p.ptr())
 	}
-	//if stats.enabled {
-	//	getg().m.curg.stats.recordGoSysBlock()
-	//}
+	if stats.enabled {
+		getg().m.curg.stats.recordGoSysBlock()
+	}
 	handoffp(releasep())
 }
 
@@ -3737,13 +3737,13 @@ func exitsyscall() {
 				systemstack(traceGoStart)
 			}
 		}
-		//if stats.enabled {
-		//	if oldp != _g_.m.p.ptr() || _g_.m.syscalltick != _g_.m.p.ptr().syscalltick {
-		//		systemstack(func() {
-		//			getg().m.curg.stats.recordGoStart()
-		//		})
-		//	}
-		//}
+		if stats.enabled {
+			if oldp != _g_.m.p.ptr() || _g_.m.syscalltick != _g_.m.p.ptr().syscalltick {
+				systemstack(func() {
+					getg().m.curg.stats.recordGoStart()
+				})
+			}
+		}
 		// There's a cpu for us, so we can run.
 		_g_.m.p.ptr().syscalltick++
 		// We need to cas the status and scan before resuming...
@@ -3832,16 +3832,16 @@ func exitsyscallfast(oldp *p) bool {
 				}
 				traceGoSysExit(0)
 			}
-			//if ok && stats.enabled {
-			//	if oldp != nil {
-			//		// Wait till traceGoSysBlock event is emitted.
-			//		// This ensures consistency of the trace (the goroutine is started after it is blocked).
-			//		for oldp.syscalltick == _g_.m.syscalltick {
-			//			osyield()
-			//		}
-			//	}
-			//	_g_.stats.recordGoSysExit()
-			//}
+			if ok && stats.enabled {
+				if oldp != nil {
+					// Wait till traceGoSysBlock event is emitted.
+					// This ensures consistency of the trace (the goroutine is started after it is blocked).
+					for oldp.syscalltick == _g_.m.syscalltick {
+						osyield()
+					}
+				}
+				_g_.m.curg.stats.recordGoSysExit()
+			}
 		})
 		if ok {
 			return true
@@ -3869,11 +3869,11 @@ func exitsyscallfast_reacquired() {
 				traceGoSysExit(0)
 			})
 		}
-		//if stats.enabled {
-		//	// Should use systemstack ?
-		//	_g_.stats.recordGoSysBlock()
-		//	_g_.stats.recordGoSysExit()
-		//}
+		if stats.enabled {
+			// Should use systemstack ?
+			_g_.m.curg.stats.recordGoSysBlock()
+			_g_.m.curg.stats.recordGoSysExit()
+		}
 		_g_.m.p.ptr().syscalltick++
 	}
 }
@@ -4944,9 +4944,9 @@ func procresize(nprocs int32) *p {
 				traceGoSched()
 				traceProcStop(_g_.m.p.ptr())
 			}
-			//if stats.enabled {
-			//	_g_.stats.recordGoSched()
-			//}
+			if stats.enabled {
+				_g_.stats.recordGoSched()
+			}
 			_g_.m.p.ptr().m = 0
 		}
 		_g_.m.p = 0
@@ -4957,9 +4957,9 @@ func procresize(nprocs int32) *p {
 		if trace.enabled {
 			traceGoStart()
 		}
-		//if stats.enabled {
-		//	_g_.stats.recordGoStart()
-		//}
+		if stats.enabled {
+			_g_.stats.recordGoStart()
+		}
 	}
 
 	// g.m.p is now set, so we no longer need mcache0 for bootstrapping.

@@ -226,7 +226,7 @@ func debugCallWrap1(dispatch uintptr, callingG *g) {
 			traceGoUnpark(callingG, 0)
 		}
 		if stats.enabled {
-			gp.stats.recordGoUnpark()
+			callingG.stats.recordGoUnpark()
 		}
 		casgstatus(callingG, _Gwaiting, _Grunnable)
 		execute(callingG, true)

@@ -334,9 +334,9 @@ func (s *mspan) sweep(preserve bool) bool {
 		traceGCSweepSpan(s.npages * _PageSize)
 	}
 
-	//if stats.enabled {
-	//	_g_.stats.recordGCSweepStart()
-	//}
+	if stats.enabled {
+		_g_.stats.recordGCSweepStart()
+	}
 
 	atomic.Xadd64(&mheap_.pagesSwept, int64(s.npages))
 
@@ -644,9 +644,9 @@ func deductSweepCredit(spanBytes uintptr, callerSweepPages uintptr) {
 	if trace.enabled {
 		traceGCSweepStart()
 	}
-	//if stats.enabled {
-	//	getg().m.curg.stats.recordGCSweepStart()
-	//}
+	if stats.enabled {
+		getg().m.curg.stats.recordGCSweepStart()
+	}
 
 retry:
 	sweptBasis := atomic.Load64(&mheap_.pagesSweptBasis)
@@ -668,9 +668,9 @@ retry:
 	if trace.enabled {
 		traceGCSweepDone()
 	}
-	//if stats.enabled {
-	//	getg().m.curg.stats.recordGCSweepDone()
-	//}
+	if stats.enabled {
+		getg().m.curg.stats.recordGCSweepDone()
+	}
 }
 
 // clobberfree sets the memory content at x to bad content, for debugging

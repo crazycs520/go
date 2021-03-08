@@ -5,11 +5,6 @@
 
 package runtime
 
-import (
-	"fmt"
-	"time"
-)
-
 var stats struct{
 	enabled       bool        // set when collect runtime statistics
 }
@@ -65,20 +60,25 @@ func (s *GStats) SyscallTime() int64 {
 	return s.syscallTime
 }
 
+func (s *GStats) SweepTime() int64 {
+	return s.sweepTime
+}
+
 func (s *GStats) TotalTime() int64 {
 	return s.totalTime
 }
 
-func (s *GStats) String() string {
-	return fmt.Sprintf("total: %s, exec: %s, io: %s, block: %s, syscall: %s, sched_wait: %s, gc_sweep: %s",
-		time.Duration(s.totalTime).String(),
-		time.Duration(s.execTime).String(),
-		time.Duration(s.ioTime).String(),
-		time.Duration(s.blockTime).String(),
-		time.Duration(s.syscallTime).String(),
-		time.Duration(s.schedWaitTime).String(),
-		time.Duration(s.sweepTime).String())
-}
+// This function will make build go stuck.
+//func (s *GStats) String() string {
+//	return fmt.Sprintf("total: %s, exec: %s, io: %s, block: %s, syscall: %s, sched_wait: %s, gc_sweep: %s",
+//		time.Duration(s.totalTime).String(),
+//		time.Duration(s.execTime).String(),
+//		time.Duration(s.ioTime).String(),
+//		time.Duration(s.blockTime).String(),
+//		time.Duration(s.syscallTime).String(),
+//		time.Duration(s.schedWaitTime).String(),
+//		time.Duration(s.sweepTime).String())
+//}
 
 
 func (s *GStats) recordGoCreate() {
