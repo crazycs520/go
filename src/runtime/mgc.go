@@ -788,6 +788,9 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p) *g {
 	if trace.enabled {
 		traceGoUnpark(gp, 0)
 	}
+	if stats.enabled {
+		gp.stats.recordGoUnpark()
+	}
 	return gp
 }
 

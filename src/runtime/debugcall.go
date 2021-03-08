@@ -160,6 +160,9 @@ func debugCallWrap(dispatch uintptr) {
 		if trace.enabled {
 			traceGoPark(traceEvGoBlock, 1)
 		}
+		if stats.enabled {
+			gp.stats.recordGoBlock()
+		}
 		casgstatus(gp, _Grunning, _Gwaiting)
 		dropg()
 
@@ -209,6 +212,10 @@ func debugCallWrap1(dispatch uintptr, callingG *g) {
 		if trace.enabled {
 			traceGoSched()
 		}
+		if stats.enabled {
+			gp.stats.recordGoSched()
+		}
+
 		casgstatus(gp, _Grunning, _Grunnable)
 		dropg()
 		lock(&sched.lock)
@@ -217,6 +224,9 @@ func debugCallWrap1(dispatch uintptr, callingG *g) {
 
 		if trace.enabled {
 			traceGoUnpark(callingG, 0)
+		}
+		if stats.enabled {
+			gp.stats.recordGoUnpark()
 		}
 		casgstatus(callingG, _Gwaiting, _Grunnable)
 		execute(callingG, true)

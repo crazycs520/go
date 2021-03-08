@@ -87,6 +87,9 @@ func (c *mcentral) cacheSpan() *mspan {
 	if trace.enabled {
 		traceGCSweepStart()
 	}
+	//if stats.enabled {
+	//	getg().m.curg.stats.recordGCSweepStart()
+	//}
 
 	// If we sweep spanBudget spans without finding any free
 	// space, just allocate a fresh span. This limits the amount
@@ -153,6 +156,10 @@ func (c *mcentral) cacheSpan() *mspan {
 		traceGCSweepDone()
 		traceDone = true
 	}
+	//if stats.enabled {
+	//	getg().m.curg.stats.recordGCSweepDone()
+	//	traceDone = true
+	//}
 
 	// We failed to get a span from the mcentral so get one from mheap.
 	s = c.grow()
@@ -165,6 +172,10 @@ havespan:
 	if trace.enabled && !traceDone {
 		traceGCSweepDone()
 	}
+	//if stats.enabled && !traceDone{
+	//	getg().m.curg.stats.recordGCSweepDone()
+	//}
+
 	n := int(s.nelems) - int(s.allocCount)
 	if n == 0 || s.freeindex == s.nelems || uintptr(s.allocCount) == s.nelems {
 		throw("span has no free objects")

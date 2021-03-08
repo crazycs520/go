@@ -326,6 +326,11 @@ func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason w
 	if status != _Grunning && status != _Gscanrunning {
 		throw("gopark: bad g status")
 	}
+
+	//if stats.enabled {
+	//	gp.stats.recordGoPark(traceEv)
+	//}
+
 	mp.waitlock = lock
 	mp.waitunlockf = unlockf
 	gp.waitreason = reason
@@ -772,6 +777,9 @@ func fastrandinit() {
 func ready(gp *g, traceskip int, next bool) {
 	if trace.enabled {
 		traceGoUnpark(gp, traceskip)
+	}
+	if stats.enabled {
+		gp.stats.recordGoUnpark()
 	}
 
 	status := readgstatus(gp)
@@ -2545,6 +2553,12 @@ func execute(gp *g, inheritTime bool) {
 		}
 		traceGoStart()
 	}
+	if stats.enabled {
+		if gp.syscallsp != 0 && gp.sysblocktraced {
+			gp.stats.recordGoSysExit()
+		}
+		gp.stats.recordGoStart()
+	}
 
 	gogo(&gp.sched)
 }
@@ -2608,6 +2622,9 @@ top:
 			casgstatus(gp, _Gwaiting, _Grunnable)
 			if trace.enabled {
 				traceGoUnpark(gp, 0)
+			}
+			if stats.enabled {
+				gp.stats.recordGoUnpark()
 			}
 			return gp, false
 		}
@@ -2701,6 +2718,9 @@ stop:
 			if trace.enabled {
 				traceGoUnpark(gp, 0)
 			}
+			if stats.enabled {
+				gp.stats.recordGoUnpark()
+			}
 			return gp, false
 		}
 	}
@@ -2720,6 +2740,9 @@ stop:
 		casgstatus(gp, _Gwaiting, _Grunnable)
 		if trace.enabled {
 			traceGoUnpark(gp, 0)
+		}
+		if stats.enabled {
+			gp.stats.recordGoUnpark()
 		}
 		return gp, false
 	}
@@ -2859,6 +2882,9 @@ stop:
 			if trace.enabled {
 				traceGoUnpark(gp, 0)
 			}
+			if stats.enabled {
+				gp.stats.recordGoUnpark()
+			}
 			return gp, false
 		}
 	}
@@ -2898,6 +2924,9 @@ stop:
 				casgstatus(gp, _Gwaiting, _Grunnable)
 				if trace.enabled {
 					traceGoUnpark(gp, 0)
+				}
+				if stats.enabled {
+					gp.stats.recordGoUnpark()
 				}
 				return gp, false
 			}
@@ -2993,6 +3022,12 @@ func injectglist(glist *gList) {
 			traceGoUnpark(gp, 0)
 		}
 	}
+	if stats.enabled {
+		for gp := glist.head.ptr(); gp != nil; gp = gp.schedlink.ptr() {
+			gp.stats.recordGoUnpark()
+		}
+	}
+
 
 	// Mark all the goroutines as runnable before we put them
 	// on the run queues.
@@ -3267,6 +3302,9 @@ func park_m(gp *g) {
 			if trace.enabled {
 				traceGoUnpark(gp, 2)
 			}
+			if stats.enabled {
+				gp.stats.recordGoUnpark()
+			}
 			casgstatus(gp, _Gwaiting, _Grunnable)
 			execute(gp, true) // Schedule it back, never returns.
 		}
@@ -3294,6 +3332,9 @@ func gosched_m(gp *g) {
 	if trace.enabled {
 		traceGoSched()
 	}
+	if stats.enabled {
+		gp.stats.recordGoSched()
+	}
 	goschedImpl(gp)
 }
 
@@ -3307,12 +3348,19 @@ func goschedguarded_m(gp *g) {
 	if trace.enabled {
 		traceGoSched()
 	}
+	if stats.enabled {
+		gp.stats.recordGoSched()
+	}
+
 	goschedImpl(gp)
 }
 
 func gopreempt_m(gp *g) {
 	if trace.enabled {
 		traceGoPreempt()
+	}
+	if stats.enabled {
+		gp.stats.recordGoSched()
 	}
 	goschedImpl(gp)
 }
@@ -3323,6 +3371,9 @@ func gopreempt_m(gp *g) {
 func preemptPark(gp *g) {
 	if trace.enabled {
 		traceGoPark(traceEvGoBlock, 0)
+	}
+	if stats.enabled {
+		gp.stats.recordGoBlock()
 	}
 	status := readgstatus(gp)
 	if status&^_Gscan != _Grunning {
@@ -3353,6 +3404,9 @@ func goyield() {
 func goyield_m(gp *g) {
 	if trace.enabled {
 		traceGoPreempt()
+	}
+	if stats.enabled {
+		gp.stats.recordGoSched()
 	}
 	pp := gp.m.p.ptr()
 	casgstatus(gp, _Grunning, _Grunnable)
@@ -3393,6 +3447,11 @@ func goexit0(gp *g) {
 	gp.param = nil
 	gp.labels = nil
 	gp.timer = nil
+
+	if stats.enabled {
+		// TODO: merge child goroutine runtime stats to the parent's stats.
+		gp.stats.recordGoEnd()
+	}
 
 	if gcBlackenEnabled != 0 && gp.gcAssistBytes > 0 {
 		// Flush assist credit to the global pool. This gives
@@ -3584,6 +3643,9 @@ func entersyscall_gcwait() {
 			traceGoSysBlock(_p_)
 			traceProcStop(_p_)
 		}
+		if stats.enabled {
+			_g_.stats.recordGoSysBlock()
+		}
 		_p_.syscalltick++
 		if sched.stopwait--; sched.stopwait == 0 {
 			notewakeup(&sched.stopnote)
@@ -3640,6 +3702,9 @@ func entersyscallblock_handoff() {
 		traceGoSysCall()
 		traceGoSysBlock(getg().m.p.ptr())
 	}
+	//if stats.enabled {
+	//	getg().m.curg.stats.recordGoSysBlock()
+	//}
 	handoffp(releasep())
 }
 
@@ -3672,6 +3737,13 @@ func exitsyscall() {
 				systemstack(traceGoStart)
 			}
 		}
+		//if stats.enabled {
+		//	if oldp != _g_.m.p.ptr() || _g_.m.syscalltick != _g_.m.p.ptr().syscalltick {
+		//		systemstack(func() {
+		//			getg().m.curg.stats.recordGoStart()
+		//		})
+		//	}
+		//}
 		// There's a cpu for us, so we can run.
 		_g_.m.p.ptr().syscalltick++
 		// We need to cas the status and scan before resuming...
@@ -3760,6 +3832,16 @@ func exitsyscallfast(oldp *p) bool {
 				}
 				traceGoSysExit(0)
 			}
+			//if ok && stats.enabled {
+			//	if oldp != nil {
+			//		// Wait till traceGoSysBlock event is emitted.
+			//		// This ensures consistency of the trace (the goroutine is started after it is blocked).
+			//		for oldp.syscalltick == _g_.m.syscalltick {
+			//			osyield()
+			//		}
+			//	}
+			//	_g_.stats.recordGoSysExit()
+			//}
 		})
 		if ok {
 			return true
@@ -3787,6 +3869,11 @@ func exitsyscallfast_reacquired() {
 				traceGoSysExit(0)
 			})
 		}
+		//if stats.enabled {
+		//	// Should use systemstack ?
+		//	_g_.stats.recordGoSysBlock()
+		//	_g_.stats.recordGoSysExit()
+		//}
 		_g_.m.p.ptr().syscalltick++
 	}
 }
@@ -4091,6 +4178,9 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	if trace.enabled {
 		traceGoCreate(newg, newg.startpc)
+	}
+	if stats.enabled {
+		newg.stats.recordGoCreate()
 	}
 	releasem(_g_.m)
 
@@ -4854,6 +4944,9 @@ func procresize(nprocs int32) *p {
 				traceGoSched()
 				traceProcStop(_g_.m.p.ptr())
 			}
+			//if stats.enabled {
+			//	_g_.stats.recordGoSched()
+			//}
 			_g_.m.p.ptr().m = 0
 		}
 		_g_.m.p = 0
@@ -4864,6 +4957,9 @@ func procresize(nprocs int32) *p {
 		if trace.enabled {
 			traceGoStart()
 		}
+		//if stats.enabled {
+		//	_g_.stats.recordGoStart()
+		//}
 	}
 
 	// g.m.p is now set, so we no longer need mcache0 for bootstrapping.
