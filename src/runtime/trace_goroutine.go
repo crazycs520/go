@@ -138,6 +138,7 @@ func collectGStats(ev byte, ts int64, args ...uint64) {
 		g.blockSchedTime = ts
 		gsStats.gs[g.ID] = g
 	case traceEvGoStart, traceEvGoStartLabel:
+		gsStats.lastG = args[0]
 		g := gsStats.gs[args[0]]
 		g.lastStartTime = ts
 		if g.StartTime == 0 {

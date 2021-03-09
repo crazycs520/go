@@ -117,11 +117,11 @@ import (
 // Start enables tracing for the current program.
 // While tracing, the trace will be buffered and written to w.
 // Start returns an error if tracing is already enabled.
-func Start(w io.Writer) error {
+func Start(w io.Writer, args ...uint64) error {
 	tracing.Lock()
 	defer tracing.Unlock()
 
-	if err := runtime.StartTrace(); err != nil {
+	if err := runtime.StartTrace(args...); err != nil {
 		return err
 	}
 	go func() {

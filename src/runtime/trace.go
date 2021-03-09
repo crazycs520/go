@@ -222,6 +222,11 @@ func StartTrace(args ...uint64) error {
 	stackID := traceStackID(mp, stkBuf, 2)
 	releasem(mp)
 
+	if len(args) > 0 {
+		trace.mode = args[0]
+		resetGsStats()
+	}
+
 	for _, gp := range allgs {
 		status := readgstatus(gp)
 		if status != _Gdead {
@@ -263,10 +268,6 @@ func StartTrace(args ...uint64) error {
 	trace.seqGC = 0
 	_g_.m.startingtrace = false
 	trace.enabled = true
-	if len(args) > 0 {
-		trace.mode = args[0]
-		resetGsStats()
-	}
 
 	// Register runtime goroutine labels.
 	_, pid, bufp := traceAcquireBuffer()
@@ -627,7 +628,7 @@ func traceStackID(mp *m, buf []uintptr, skip int) uint64 {
 // traceAcquireBuffer returns trace buffer to use and, if necessary, locks it.
 func traceAcquireBuffer() (mp *m, pid int32, bufp *traceBufPtr) {
 	mp = acquirem()
-	if p := mp.p.ptr(); p != nil && trace.mode == traceModeDefault {
+	if p := mp.p.ptr(); p != nil {
 		return mp, p.id, &p.tracebuf
 	}
 	lock(&trace.bufLock)
