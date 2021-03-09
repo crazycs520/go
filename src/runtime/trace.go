@@ -120,6 +120,7 @@ var trace struct {
 	timeStart     int64       // nanotime when tracing was started
 	timeEnd       int64       // nanotime when tracing was stopped
 	seqGC         uint64      // GC start/done sequencer
+	mode          uint64      // mode indicate the trace mode.
 	reading       traceBufPtr // buffer currently handed off to user
 	empty         traceBufPtr // stack of empty buffers
 	fullHead      traceBufPtr // queue of full buffers
@@ -180,7 +181,7 @@ func traceBufPtrOf(b *traceBuf) traceBufPtr {
 // StartTrace returns an error if tracing is already enabled.
 // Most clients should use the runtime/trace package or the testing package's
 // -test.trace flag instead of calling StartTrace directly.
-func StartTrace() error {
+func StartTrace(args ...uint64) error {
 	// Stop the world so that we can take a consistent snapshot
 	// of all goroutines at the beginning of the trace.
 	// Do not stop the world during GC so we ensure we always see
@@ -262,6 +263,10 @@ func StartTrace() error {
 	trace.seqGC = 0
 	_g_.m.startingtrace = false
 	trace.enabled = true
+	if len(args) > 0 {
+		trace.mode = args[0]
+		resetGsStats()
+	}
 
 	// Register runtime goroutine labels.
 	_, pid, bufp := traceAcquireBuffer()
@@ -329,6 +334,10 @@ func StopTrace() {
 
 	trace.enabled = false
 	trace.shutdown = true
+	trace.mode = 0
+	if len(gsStats.gs) > 0 {
+		resetGsStats()
+	}
 	unlock(&trace.bufLock)
 
 	unlock(&sched.sysmonlock)
@@ -531,6 +540,13 @@ func traceEvent(ev byte, skip int, args ...uint64) {
 		return
 	}
 
+	if trace.mode == traceModeGoroutine {
+		ts := nanotime()
+		collectGStats(ev, ts, args...)
+		traceReleaseBuffer(pid)
+		return
+	}
+
 	if skip > 0 {
 		if getg() == mp.curg {
 			skip++ // +1 because stack is captured in traceEventLocked.
@@ -611,7 +627,7 @@ func traceStackID(mp *m, buf []uintptr, skip int) uint64 {
 // traceAcquireBuffer returns trace buffer to use and, if necessary, locks it.
 func traceAcquireBuffer() (mp *m, pid int32, bufp *traceBufPtr) {
 	mp = acquirem()
-	if p := mp.p.ptr(); p != nil {
+	if p := mp.p.ptr(); p != nil && trace.mode == traceModeDefault {
 		return mp, p.id, &p.tracebuf
 	}
 	lock(&trace.bufLock)
