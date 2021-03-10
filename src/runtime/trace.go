@@ -224,7 +224,7 @@ func StartTrace(args ...uint64) error {
 
 	if len(args) > 0 {
 		trace.mode = args[0]
-		resetGsStats()
+		resetGsStats(len(allp))
 	}
 
 	for _, gp := range allgs {
@@ -335,9 +335,9 @@ func StopTrace() {
 
 	trace.enabled = false
 	trace.shutdown = true
-	trace.mode = 0
-	if len(gsStats.gs) > 0 {
-		resetGsStats()
+	if trace.mode == traceModeGoroutine {
+		resetGsStats(len(allp))
+		trace.mode = 0
 	}
 	unlock(&trace.bufLock)
 
@@ -543,7 +543,7 @@ func traceEvent(ev byte, skip int, args ...uint64) {
 
 	if trace.mode == traceModeGoroutine {
 		ts := nanotime()
-		collectGStats(ev, ts, args...)
+		collectGStats(pid, ev, ts, args...)
 		traceReleaseBuffer(pid)
 		return
 	}
