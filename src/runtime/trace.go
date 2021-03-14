@@ -335,8 +335,8 @@ func StopTrace() {
 
 	trace.enabled = false
 	trace.shutdown = true
-	if trace.mode == traceModeGoroutine {
-		resetGsStats(len(allp))
+	if trace.mode == TraceModeGoroutine {
+		resetGsStats(0)
 		trace.mode = 0
 	}
 	unlock(&trace.bufLock)
@@ -541,11 +541,12 @@ func traceEvent(ev byte, skip int, args ...uint64) {
 		return
 	}
 
-	if trace.mode == traceModeGoroutine {
-		ts := nanotime()
-		collectGStats(pid, ev, ts, args...)
-		traceReleaseBuffer(pid)
-		return
+	if trace.mode != TraceModeDefault {
+		collectGStats(pid, ev, args...)
+		if trace.mode == TraceModeGoroutine {
+			traceReleaseBuffer(pid)
+			return
+		}
 	}
 
 	if skip > 0 {

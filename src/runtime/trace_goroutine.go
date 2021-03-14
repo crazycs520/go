@@ -1,8 +1,9 @@
 package runtime
 
 const (
-	traceModeDefault   = 0
-	traceModeGoroutine = 1
+	TraceModeDefault   = 0
+	TraceModeGoroutine = 1
+	TraceModeAll       = 2
 )
 
 // GDesc contains statistics and execution details of a single goroutine.
@@ -10,8 +11,8 @@ type GDesc struct {
 	ID           uint64
 	Name         string
 	PC           uint64
-	CreationTime int64
 	StartTime    int64
+	CreationTime int64
 	EndTime      int64
 
 	// Statistics of execution time during the goroutine execution.
@@ -47,15 +48,19 @@ type gdesc struct {
 // finalize is called when processing a goroutine end event or at
 // the end of trace processing. This finalizes the execution stat
 // and any active regions in the goroutine, in which case trigger is nil.
-func (g *GDesc) finalize(lastTs, activeGCStartTime int64, endTs int64) {
+func (g *GDesc) finalize(endTs, activeGCStartTime int64) {
 	if endTs != 0 {
 		g.EndTime = endTs
 	}
 
-	finalStat := g.snapshotStat(lastTs, activeGCStartTime)
+	finalStat := g.snapshotStat(endTs, activeGCStartTime)
 
 	g.GExecutionStat = finalStat
 	*(g.gdesc) = gdesc{}
+}
+
+func (g *GDesc) finishRemain(endTs, activeGCStartTime int64) {
+	g.GExecutionStat = g.snapshotStat(endTs, activeGCStartTime)
 }
 
 // snapshotStat returns the snapshot of the goroutine execution statistics.
@@ -105,69 +110,67 @@ func (g *GDesc) snapshotStat(lastTs, activeGCStartTime int64) (ret GExecutionSta
 }
 
 var gsStats struct {
-	globalGs     map[uint64]*GDesc   // global Gs
-	pgs          []map[uint64]*GDesc // gs for each P
-	globalLastGs map[int]uint64      // last goroutine for global P
-	pLastGs      []map[int]uint64    // last goroutine running on P
-
-	lastGs      []uint64
-	lastPs      []int
+	ps          []*pGsCollector
+	global      *pGsCollector
 	gcStartTime int64 // gcStartTime == 0 indicates gc is inactive.
 }
 
-func resetGsStats(np int) {
-	gsStats.globalGs = make(map[uint64]*GDesc)
-	gsStats.globalLastGs = make(map[int]uint64)
+type pGsCollector struct {
+	gs     map[uint64]*GDesc // global Gs
+	lastGs map[int]uint64    // last goroutine for global P
+	lastG  uint64
+	lastP  int
+}
 
-	gsStats.pgs = make([]map[uint64]*GDesc, np)
-	gsStats.pLastGs = make([]map[int]uint64, np)
-	for i := 0; i < np; i++ {
-		gsStats.pgs[i] = make(map[uint64]*GDesc)
-		gsStats.pLastGs[i] = make(map[int]uint64)
+func resetGsStats(np int) {
+	if np == 0 {
+		gsStats.ps = nil
+		gsStats.global = nil
+		gsStats.gcStartTime = 0
+		return
 	}
-	gsStats.lastGs = make([]uint64, np+1)
-	gsStats.lastPs = make([]int, np+1)
+	gsStats.ps = make([]*pGsCollector, np)
+	for i := 0; i < np; i++ {
+		gsStats.ps[i] = &pGsCollector{
+			gs:     make(map[uint64]*GDesc),
+			lastGs: make(map[int]uint64),
+		}
+	}
+	gsStats.global = &pGsCollector{
+		gs:     make(map[uint64]*GDesc),
+		lastGs: make(map[int]uint64),
+	}
 	gsStats.gcStartTime = 0
 }
 
 // parse logic same with GoroutineStats in internal/trace/goroutines.go
 
 //go:yeswritebarrierrec
-func collectGStats(pid int32, ev byte, ts int64, args ...uint64) {
-	var gs map[uint64]*GDesc
-	var lastGs map[int]uint64
-	var lastG uint64
-	var lastP int
+func collectGStats(pid int32, ev byte, args ...uint64) {
+	var collector *pGsCollector
 	if pid == traceGlobProc {
-		gs = gsStats.globalGs
-		lastGs = gsStats.globalLastGs
-		lastG = gsStats.lastGs[len(gsStats.lastGs)-1]
-		lastP = gsStats.lastPs[len(gsStats.lastPs)-1]
+		collector = gsStats.global
 	} else {
-		gs = gsStats.pgs[pid]
-		lastGs = gsStats.pLastGs[pid]
-		lastG = gsStats.lastGs[pid]
-		lastP = gsStats.lastPs[pid]
+		collector = gsStats.ps[pid]
 	}
+	gs := collector.gs
+	lastGs := collector.lastGs
+	lastG := collector.lastG
+	lastP := collector.lastP
 
+	ts := nanotime()
 	switch ev {
 	case traceEvBatch:
 		lastGs[lastP] = lastG
-		if pid == traceGlobProc {
-			gsStats.lastPs[len(gsStats.lastPs)-1] = int(args[0])
-			gsStats.lastGs[len(gsStats.lastGs)-1] = lastGs[lastP]
-		} else {
-			gsStats.lastPs[pid] = int(args[0])
-			gsStats.lastGs[pid] = lastGs[lastP]
-		}
+		lastP = int(args[0])
+		lastG = lastGs[lastP]
 	case traceEvGoCreate:
-		setLastG(pid, args[0])
 		g := &GDesc{ID: args[0], CreationTime: ts, gdesc: new(gdesc)}
 		g.blockSchedTime = ts
-		setgDest(pid, g.ID, g)
-	case traceEvGoStart, traceEvGoStartLabel:
-		setLastG(pid, args[0])
-		g := getgDest(args[0], pid)
+		gs[g.ID] = g
+	case traceEvGoStart, traceEvGoStartLocal, traceEvGoStartLabel:
+		lastG = args[0]
+		g := getGDest(pid, args[0])
 		g.lastStartTime = ts
 		if g.StartTime == 0 {
 			g.StartTime = ts
@@ -177,42 +180,44 @@ func collectGStats(pid int32, ev byte, ts int64, args ...uint64) {
 			g.blockSchedTime = 0
 		}
 	case traceEvGoEnd, traceEvGoStop:
-		g := getgDest(lastG, pid)
-		g.finalize(ts, gsStats.gcStartTime, ts)
+		g := getGDest(pid, lastG)
+		g.finalize(ts, gsStats.gcStartTime)
 		// todo: remove g from gsStats.gs.
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoBlockSend, traceEvGoBlockRecv, traceEvGoBlockSelect,
 		traceEvGoBlockSync, traceEvGoBlockCond:
-		g := getgDest(lastG, pid)
-		g.ExecTime += ts - g.lastStartTime
-		g.lastStartTime = 0
+		g := getGDest(pid, lastG)
+		if g.lastStartTime != 0 {
+			g.ExecTime += ts - g.lastStartTime
+			g.lastStartTime = 0
+		}
 		g.blockSyncTime = ts
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoSched, traceEvGoPreempt:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		g.ExecTime += ts - g.lastStartTime
 		g.lastStartTime = 0
 		g.blockSchedTime = ts
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoSleep, traceEvGoBlock:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		g.ExecTime += ts - g.lastStartTime
 		g.lastStartTime = 0
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoBlockNet:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		g.ExecTime += ts - g.lastStartTime
 		g.lastStartTime = 0
 		g.blockNetTime = ts
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoBlockGC:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		g.ExecTime += ts - g.lastStartTime
 		g.lastStartTime = 0
 		g.blockGCTime = ts
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoUnblock:
-		g := getgDest(args[0], pid)
+		g := getGDest(pid, args[0])
 		if g.blockNetTime != 0 {
 			g.IOTime += ts - g.blockNetTime
 			g.blockNetTime = 0
@@ -223,26 +228,25 @@ func collectGStats(pid int32, ev byte, ts int64, args ...uint64) {
 		}
 		g.blockSchedTime = ts
 	case traceEvGoSysBlock:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		g.ExecTime += ts - g.lastStartTime
 		g.lastStartTime = 0
 		g.blockSyscallTime = ts
-		setLastG(pid, 0)
+		lastG = 0
 	case traceEvGoSysExit:
-		g := getgDest(args[0], pid)
+		g := getGDest(pid, args[0])
 		if g.blockSyscallTime != 0 {
 			g.SyscallTime += ts - g.blockSyscallTime
 			g.blockSyscallTime = 0
 		}
 		g.blockSchedTime = ts
 	case traceEvGCSweepStart:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		if g != nil {
-			// Sweep can happen during GC on system goroutine.
 			g.blockSweepTime = ts
 		}
 	case traceEvGCSweepDone:
-		g := getgDest(lastG, pid)
+		g := getGDest(pid, lastG)
 		if g != nil && g.blockSweepTime != 0 {
 			g.SweepTime += ts - g.blockSweepTime
 			g.blockSweepTime = 0
@@ -263,47 +267,32 @@ func collectGStats(pid int32, ev byte, ts int64, args ...uint64) {
 		}
 		gsStats.gcStartTime = 0 // indicates gc is inactive.
 	}
+	collector.lastG = lastG
+	collector.lastP = lastP
 }
 
-func setLastG(pid int32, gid uint64) {
-	if pid == traceGlobProc {
-		gsStats.lastGs[len(gsStats.lastGs)-1] = 0
-	} else {
-		gsStats.lastGs[pid] = 0
-	}
-}
-
-func setgDest(pid int32, gid uint64, stat *GDesc) {
-	if pid == traceGlobProc {
-		gsStats.globalGs[gid] = stat
-	} else {
-		gsStats.pgs[pid][gid] = stat
-	}
-}
-
-func getgDest(gid uint64, pid int32) *GDesc {
+func getGDest(pid int32, gid uint64) *GDesc {
 	if pid != traceGlobProc {
-		gs := gsStats.pgs[pid]
+		gs := gsStats.ps[pid].gs
 		stat := gs[gid]
 		if stat != nil {
 			return stat
 		}
 	}
-
 	// traverse all p, need lock.
-	for _, gs := range gsStats.pgs {
-		stat := gs[gid]
+	for _, collector := range gsStats.ps {
+		stat := collector.gs[gid]
 		if stat != nil {
 			return stat
 		}
 	}
 
 	// get from global
-	return gsStats.globalGs[gid]
+	return gsStats.global.gs[gid]
 }
 
 func GetGDesc() (s GDesc) {
-	if !trace.enabled || trace.mode != traceModeDefault {
+	if !trace.enabled || trace.mode == TraceModeDefault {
 		return s
 	}
 	g := getg()
@@ -311,28 +300,90 @@ func GetGDesc() (s GDesc) {
 	var pid int32
 	if p := g.m.p.ptr(); p != nil {
 		pid = p.id
-		gs := gsStats.pgs[pid]
+		gs := gsStats.ps[pid].gs
 		stat := gs[uint64(id)]
 		if stat != nil {
 			s = *stat
+			s.finishRemain(nanotime(), gsStats.gcStartTime)
 			return s
 		}
 	}
 
 	// traverse all p, need lock.
-	for _, gs := range gsStats.pgs {
-		stat := gs[uint64(id)]
+	for _, collector := range gsStats.ps {
+		stat := collector.gs[uint64(id)]
 		if stat != nil {
 			s = *stat
+			s.finishRemain(nanotime(), gsStats.gcStartTime)
 			return s
 		}
 	}
 
 	// get from global
-	stat := gsStats.globalGs[uint64(id)]
+	stat := gsStats.global.gs[uint64(id)]
 	if stat == nil {
 		return s
 	}
+
 	s = *stat
+	s.finishRemain(nanotime(), gsStats.gcStartTime)
 	return s
+}
+
+var EventDescriptions = [traceEvCount]struct {
+	Name       string
+	minVersion int
+	Stack      bool
+	Args       []string
+	SArgs      []string // string arguments
+}{
+	traceEvNone:              {"None", 1005, false, []string{}, nil},
+	traceEvBatch:             {"Batch", 1005, false, []string{"p", "ticks"}, nil}, // in 1.5 format it was {"p", "seq", "ticks"}
+	traceEvFrequency:         {"Frequency", 1005, false, []string{"freq"}, nil},   // in 1.5 format it was {"freq", "unused"}
+	traceEvStack:             {"Stack", 1005, false, []string{"id", "siz"}, nil},
+	traceEvGomaxprocs:        {"Gomaxprocs", 1005, true, []string{"procs"}, nil},
+	traceEvProcStart:         {"ProcStart", 1005, false, []string{"thread"}, nil},
+	traceEvProcStop:          {"ProcStop", 1005, false, []string{}, nil},
+	traceEvGCStart:           {"GCStart", 1005, true, []string{"seq"}, nil}, // in 1.5 format it was {}
+	traceEvGCDone:            {"GCDone", 1005, false, []string{}, nil},
+	traceEvGCSTWStart:        {"GCSTWStart", 1005, false, []string{"kindid"}, []string{"kind"}}, // <= 1.9, args was {} (implicitly {0})
+	traceEvGCSTWDone:         {"GCSTWDone", 1005, false, []string{}, nil},
+	traceEvGCSweepStart:      {"GCSweepStart", 1005, true, []string{}, nil},
+	traceEvGCSweepDone:       {"GCSweepDone", 1005, false, []string{"swept", "reclaimed"}, nil}, // before 1.9, format was {}
+	traceEvGoCreate:          {"GoCreate", 1005, true, []string{"g", "stack"}, nil},
+	traceEvGoStart:           {"GoStart", 1005, false, []string{"g", "seq"}, nil}, // in 1.5 format it was {"g"}
+	traceEvGoEnd:             {"GoEnd", 1005, false, []string{}, nil},
+	traceEvGoStop:            {"GoStop", 1005, true, []string{}, nil},
+	traceEvGoSched:           {"GoSched", 1005, true, []string{}, nil},
+	traceEvGoPreempt:         {"GoPreempt", 1005, true, []string{}, nil},
+	traceEvGoSleep:           {"GoSleep", 1005, true, []string{}, nil},
+	traceEvGoBlock:           {"GoBlock", 1005, true, []string{}, nil},
+	traceEvGoUnblock:         {"GoUnblock", 1005, true, []string{"g", "seq"}, nil}, // in 1.5 format it was {"g"}
+	traceEvGoBlockSend:       {"GoBlockSend", 1005, true, []string{}, nil},
+	traceEvGoBlockRecv:       {"GoBlockRecv", 1005, true, []string{}, nil},
+	traceEvGoBlockSelect:     {"GoBlockSelect", 1005, true, []string{}, nil},
+	traceEvGoBlockSync:       {"GoBlockSync", 1005, true, []string{}, nil},
+	traceEvGoBlockCond:       {"GoBlockCond", 1005, true, []string{}, nil},
+	traceEvGoBlockNet:        {"GoBlockNet", 1005, true, []string{}, nil},
+	traceEvGoSysCall:         {"GoSysCall", 1005, true, []string{}, nil},
+	traceEvGoSysExit:         {"GoSysExit", 1005, false, []string{"g", "seq", "ts"}, nil},
+	traceEvGoSysBlock:        {"GoSysBlock", 1005, false, []string{}, nil},
+	traceEvGoWaiting:         {"GoWaiting", 1005, false, []string{"g"}, nil},
+	traceEvGoInSyscall:       {"GoInSyscall", 1005, false, []string{"g"}, nil},
+	traceEvHeapAlloc:         {"HeapAlloc", 1005, false, []string{"mem"}, nil},
+	traceEvNextGC:            {"NextGC", 1005, false, []string{"mem"}, nil},
+	traceEvTimerGoroutine:    {"TimerGoroutine", 1005, false, []string{"g"}, nil}, // in 1.5 format it was {"g", "unused"}
+	traceEvFutileWakeup:      {"FutileWakeup", 1005, false, []string{}, nil},
+	traceEvString:            {"String", 1007, false, []string{}, nil},
+	traceEvGoStartLocal:      {"GoStartLocal", 1007, false, []string{"g"}, nil},
+	traceEvGoUnblockLocal:    {"GoUnblockLocal", 1007, true, []string{"g"}, nil},
+	traceEvGoSysExitLocal:    {"GoSysExitLocal", 1007, false, []string{"g", "ts"}, nil},
+	traceEvGoStartLabel:      {"GoStartLabel", 1008, false, []string{"g", "seq", "labelid"}, []string{"label"}},
+	traceEvGoBlockGC:         {"GoBlockGC", 1008, true, []string{}, nil},
+	traceEvGCMarkAssistStart: {"GCMarkAssistStart", 1009, true, []string{}, nil},
+	traceEvGCMarkAssistDone:  {"GCMarkAssistDone", 1009, false, []string{}, nil},
+	traceEvUserTaskCreate:    {"UserTaskCreate", 1011, true, []string{"taskid", "pid", "typeid"}, []string{"name"}},
+	traceEvUserTaskEnd:       {"UserTaskEnd", 1011, true, []string{"taskid"}, nil},
+	traceEvUserRegion:        {"UserRegion", 1011, true, []string{"taskid", "mode", "typeid"}, []string{"name"}},
+	traceEvUserLog:           {"UserLog", 1011, true, []string{"id", "keyid"}, []string{"category", "message"}},
 }

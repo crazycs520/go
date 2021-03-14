@@ -114,6 +114,12 @@ import (
 	"sync/atomic"
 )
 
+const (
+	TraceModeDefault   = runtime.TraceModeDefault
+	TraceModeGoroutine = runtime.TraceModeGoroutine
+	TraceModeAll       = runtime.TraceModeAll
+)
+
 // Start enables tracing for the current program.
 // While tracing, the trace will be buffered and written to w.
 // Start returns an error if tracing is already enabled.
