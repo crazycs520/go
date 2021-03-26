@@ -159,6 +159,12 @@ func collectGStats(pid int32, ev byte, args ...uint64) {
 	lastP := collector.lastP
 
 	ts := nanotime()
+
+	print(EventDescriptions[ev].Name, " lastG: ", lastG, " lastP: ", lastP)
+	if len(args) > 0 {
+		print(" arg[0]: ", args[0])
+	}
+	print("\n")
 	switch ev {
 	case traceEvBatch:
 		lastGs[lastP] = lastG
