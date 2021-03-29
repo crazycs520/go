@@ -1921,6 +1921,7 @@ func oneNewExtraM() {
 	mp.lockedg.set(gp)
 	gp.lockedm.set(mp)
 	gp.goid = int64(atomic.Xadd64(&sched.goidgen, 1))
+	gp.stats.goid = gp.goid
 	if raceenabled {
 		gp.racectx = racegostart(funcPC(newextram) + sys.PCQuantum)
 	}
@@ -4172,6 +4173,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 		_p_.goidcacheend = _p_.goidcache + _GoidCacheBatch
 	}
 	newg.goid = int64(_p_.goidcache)
+	newg.stats.goid = newg.goid
 	_p_.goidcache++
 	if raceenabled {
 		newg.racectx = racegostart(callerpc)
