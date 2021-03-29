@@ -69,18 +69,6 @@ func (s *GStats) TotalTime() int64 {
 	return s.totalTime
 }
 
-// This function will make build go stuck.
-//func (s *GStats) String() string {
-//	return fmt.Sprintf("total: %s, exec: %s, io: %s, block: %s, syscall: %s, sched_wait: %s, gc_sweep: %s",
-//		time.Duration(s.totalTime).String(),
-//		time.Duration(s.execTime).String(),
-//		time.Duration(s.ioTime).String(),
-//		time.Duration(s.blockTime).String(),
-//		time.Duration(s.syscallTime).String(),
-//		time.Duration(s.schedWaitTime).String(),
-//		time.Duration(s.sweepTime).String())
-//}
-
 func (s *GStats) recordGoCreate() {
 	s.blockSchedTime = nanotime()
 	s.creationTime = s.blockSchedTime
