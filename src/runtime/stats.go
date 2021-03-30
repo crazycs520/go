@@ -34,14 +34,18 @@ type GStats struct {
 	blockSweepTime   int64
 	blockSchedTime   int64
 
+	// execTime is almost cpu time.
 	execTime      int64
 	schedWaitTime int64
 	// ioTime is the network wait time.
-	ioTime      int64
-	blockTime   int64
+	ioTime int64
+	// blockTime is sync block time.
+	blockTime int64
+	// syscallTime is blocking syscall time.
 	syscallTime int64
-	sweepTime   int64
-	totalTime   int64
+	// sweepTime is GC sweeping time.
+	sweepTime int64
+	totalTime int64
 
 	creationTime int64
 	endTime      int64
