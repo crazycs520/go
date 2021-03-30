@@ -3880,12 +3880,13 @@ func exitsyscallfast_reacquired() {
 			})
 		}
 		if stats.enabled {
-			// Should use systemstack ?
-			curg := _g_.m.curg
-			if curg != nil {
-				curg.stats.recordGoSysBlock()
-				curg.stats.recordGoSysExit()
-			}
+			systemstack(func() {
+				curg := _g_.m.curg
+				if curg != nil {
+					curg.stats.recordGoSysBlock()
+					curg.stats.recordGoSysExit()
+				}
+			})
 		}
 		_g_.m.p.ptr().syscalltick++
 	}
