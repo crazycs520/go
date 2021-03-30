@@ -7,18 +7,22 @@ package runtime
 
 var stats struct {
 	enabled bool // set when collect runtime statistics
+	debug   bool
 }
 
 func EnableStats() {
 	//stopTheWorldGC("start collecting stats")
-
 	stats.enabled = true
-
 	//startTheWorldGC()
 }
 
+func EnableStatsDebug() {
+	stats.debug = true
+}
+
 func DisableStats() {
-	stats.enabled = true
+	stats.enabled = false
+	stats.debug = false
 }
 
 type GStats struct {
@@ -72,7 +76,9 @@ func (s *GStats) TotalTime() int64 {
 func (s *GStats) recordGoCreate() {
 	s.blockSchedTime = nanotime()
 	s.creationTime = s.blockSchedTime
-	//print("GoCreate", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoCreate", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoStart() {
@@ -81,7 +87,9 @@ func (s *GStats) recordGoStart() {
 		s.schedWaitTime += s.lastStartTime - s.blockSchedTime
 		s.blockSchedTime = 0
 	}
-	//print("GoStart", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoStart", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoSched() {
@@ -92,7 +100,9 @@ func (s *GStats) recordGoSched() {
 
 	}
 	s.blockSchedTime = ts
-	//print("GoSched", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoSched", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoBlock() {
@@ -101,7 +111,9 @@ func (s *GStats) recordGoBlock() {
 		s.execTime += ts - s.lastStartTime
 		s.lastStartTime = 0
 	}
-	//print("GoBlock", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoBlock", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoPark(traceEv byte) {
@@ -134,7 +146,9 @@ func (s *GStats) recordGoPark(traceEv byte) {
 			s.lastStartTime = 0
 		}
 	}
-	//print(EventDescriptions[traceEv].Name, ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print(EventDescriptions[traceEv].Name, ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoUnpark() {
@@ -148,7 +162,9 @@ func (s *GStats) recordGoUnpark() {
 		s.blockSyncTime = 0
 	}
 	s.blockSchedTime = ts
-	//print("GoUnpark", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoUnpark", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoSysBlock() {
@@ -158,7 +174,9 @@ func (s *GStats) recordGoSysBlock() {
 		s.lastStartTime = 0
 	}
 	s.blockSyscallTime = ts
-	//print("GoSysBlock", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoSysBlock", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoSysExit() {
@@ -168,12 +186,16 @@ func (s *GStats) recordGoSysExit() {
 		s.blockSyscallTime = 0
 	}
 	s.blockSchedTime = ts
-	//print("GoSysExit", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoSysExit", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGCSweepStart() {
 	s.blockSweepTime = nanotime()
-	//print("GoGCSweepStart", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoGCSweepStart", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGCSweepDone() {
@@ -181,12 +203,16 @@ func (s *GStats) recordGCSweepDone() {
 		s.sweepTime += nanotime() - s.blockSweepTime
 		s.blockSweepTime = 0
 	}
-	//print("GoGCSweepDone", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoGCSweepDone", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) recordGoEnd() {
 	s.finalize()
-	//print("GoEnd", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	if stats.debug {
+		print("GoEnd", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
+	}
 }
 
 func (s *GStats) finalize() {

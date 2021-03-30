@@ -1922,6 +1922,7 @@ func oneNewExtraM() {
 	gp.lockedm.set(mp)
 	gp.goid = int64(atomic.Xadd64(&sched.goidgen, 1))
 	gp.stats.goid = gp.goid
+	gp.stats.creationTime = nanotime()
 	if raceenabled {
 		gp.racectx = racegostart(funcPC(newextram) + sys.PCQuantum)
 	}
@@ -3024,7 +3025,6 @@ func injectglist(glist *gList) {
 			gp.stats.recordGoUnpark()
 		}
 	}
-
 
 	// Mark all the goroutines as runnable before we put them
 	// on the run queues.
@@ -4174,6 +4174,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	newg.goid = int64(_p_.goidcache)
 	newg.stats.goid = newg.goid
+	newg.stats.creationTime = nanotime()
 	_p_.goidcache++
 	if raceenabled {
 		newg.racectx = racegostart(callerpc)
