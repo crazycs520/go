@@ -36,11 +36,12 @@ type GStats struct {
 
 	execTime      int64
 	schedWaitTime int64
-	ioTime        int64
-	blockTime     int64
-	syscallTime   int64
-	sweepTime     int64
-	totalTime     int64
+	// ioTime is the network wait time.
+	ioTime      int64
+	blockTime   int64
+	syscallTime int64
+	sweepTime   int64
+	totalTime   int64
 
 	creationTime int64
 	endTime      int64
