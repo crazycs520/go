@@ -752,7 +752,10 @@ func (h *mheap) reclaim(npage uintptr) {
 		traceGCSweepStart()
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepStart()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepStart()
+		}
 	}
 
 	arenas := h.sweepArenas
@@ -803,7 +806,10 @@ func (h *mheap) reclaim(npage uintptr) {
 		traceGCSweepDone()
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepDone()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepDone()
+		}
 	}
 	releasem(mp)
 }

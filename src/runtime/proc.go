@@ -3704,7 +3704,10 @@ func entersyscallblock_handoff() {
 		traceGoSysBlock(getg().m.p.ptr())
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGoSysBlock()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGoSysBlock()
+		}
 	}
 	handoffp(releasep())
 }
@@ -3741,7 +3744,10 @@ func exitsyscall() {
 		if stats.enabled {
 			if oldp != _g_.m.p.ptr() || _g_.m.syscalltick != _g_.m.p.ptr().syscalltick {
 				systemstack(func() {
-					getg().m.curg.stats.recordGoStart()
+					_g := getg().m.curg
+					if _g != nil {
+						_g.stats.recordGoStart()
+					}
 				})
 			}
 		}
@@ -3841,7 +3847,10 @@ func exitsyscallfast(oldp *p) bool {
 						osyield()
 					}
 				}
-				_g_.m.curg.stats.recordGoSysExit()
+				curg := _g_.m.curg
+				if curg != nil {
+					curg.stats.recordGoSysExit()
+				}
 			}
 		})
 		if ok {
@@ -3872,8 +3881,11 @@ func exitsyscallfast_reacquired() {
 		}
 		if stats.enabled {
 			// Should use systemstack ?
-			_g_.m.curg.stats.recordGoSysBlock()
-			_g_.m.curg.stats.recordGoSysExit()
+			curg := _g_.m.curg
+			if curg != nil {
+				curg.stats.recordGoSysBlock()
+				curg.stats.recordGoSysExit()
+			}
 		}
 		_g_.m.p.ptr().syscalltick++
 	}

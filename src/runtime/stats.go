@@ -43,6 +43,7 @@ type GStats struct {
 	totalTime     int64
 
 	creationTime int64
+	endTime      int64
 }
 
 func (s *GStats) ExecTime() int64 {
@@ -127,7 +128,8 @@ func (s *GStats) recordGoPark(traceEv byte) {
 		}
 		s.blockSyncTime = ts
 	case traceEvGoStop:
-		s.finalize()
+		ts := nanotime()
+		s.finalize(ts)
 	case traceEvGoBlockNet:
 		ts := nanotime()
 		if s.lastStartTime != 0 {
@@ -192,6 +194,9 @@ func (s *GStats) recordGoSysExit() {
 }
 
 func (s *GStats) recordGCSweepStart() {
+	if s.isEnd() {
+		return
+	}
 	s.blockSweepTime = nanotime()
 	if stats.debug {
 		print("GoGCSweepStart", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
@@ -199,6 +204,10 @@ func (s *GStats) recordGCSweepStart() {
 }
 
 func (s *GStats) recordGCSweepDone() {
+	if s.isEnd() {
+		return
+	}
+
 	if s.blockSweepTime != 0 {
 		s.sweepTime += nanotime() - s.blockSweepTime
 		s.blockSweepTime = 0
@@ -208,15 +217,20 @@ func (s *GStats) recordGCSweepDone() {
 	}
 }
 
+func (s *GStats) isEnd() bool {
+	return s.endTime > 0
+}
+
 func (s *GStats) recordGoEnd() {
-	s.finalize()
+	ts := nanotime()
+	s.finalize(ts)
+	s.endTime = ts
 	if stats.debug {
 		print("GoEnd", ", go: ", s.goid, " exec: ", s.execTime/1000000, "\n")
 	}
 }
 
-func (s *GStats) finalize() {
-	ts := nanotime()
+func (s *GStats) finalize(ts int64) {
 	if s.creationTime != 0 {
 		s.totalTime = ts - s.creationTime
 	} else {

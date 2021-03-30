@@ -645,7 +645,10 @@ func deductSweepCredit(spanBytes uintptr, callerSweepPages uintptr) {
 		traceGCSweepStart()
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepStart()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepStart()
+		}
 	}
 
 retry:
@@ -669,7 +672,10 @@ retry:
 		traceGCSweepDone()
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepDone()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepDone()
+		}
 	}
 }
 

@@ -88,7 +88,10 @@ func (c *mcentral) cacheSpan() *mspan {
 		traceGCSweepStart()
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepStart()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepStart()
+		}
 	}
 
 	// If we sweep spanBudget spans without finding any free
@@ -157,7 +160,10 @@ func (c *mcentral) cacheSpan() *mspan {
 		traceDone = true
 	}
 	if stats.enabled {
-		getg().m.curg.stats.recordGCSweepDone()
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepDone()
+		}
 		traceDone = true
 	}
 
@@ -172,8 +178,11 @@ havespan:
 	if trace.enabled && !traceDone {
 		traceGCSweepDone()
 	}
-	if stats.enabled && !traceDone{
-		getg().m.curg.stats.recordGCSweepDone()
+	if stats.enabled && !traceDone {
+		_g := getg().m.curg
+		if _g != nil {
+			_g.stats.recordGCSweepDone()
+		}
 	}
 
 	n := int(s.nelems) - int(s.allocCount)
