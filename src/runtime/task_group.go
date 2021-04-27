@@ -14,6 +14,7 @@ import (
 type t struct {
 	schedtick uint64 // incremented atomically on every scheduler call
 	nanos     uint64 // cumulative slices of CPU time used by the task group, in nanoseconds
+	memAlloc  uint64 // allocated memory bytes
 }
 
 // defaulTaskGroupCtx is used for top level goroutines without a task group yet.
@@ -62,6 +63,10 @@ func initTaskGroupMetrics() {
 		"/taskgroup/sched/cputime:nanoseconds": func(tg *t, out *metricValue) {
 			out.kind = metricKindUint64
 			out.scalar = atomic.Load64(&tg.nanos)
+		},
+		"/taskgroup/heap/allocated:bytes": func(tg *t, out *metricValue) {
+			out.kind = metricKindUint64
+			out.scalar = atomic.Load64(&tg.memAlloc)
 		},
 	}
 
