@@ -110,10 +110,6 @@ func (p *cpuProfile) add(gp *g, stk []uintptr) {
 		osyield()
 	}
 
-	if p.mode == ProfileModeTagOnly {
-		stk = nil
-	}
-
 	if prof.hz != 0 { // implies cpuprof.log != nil
 		if p.numExtra > 0 || p.lostExtra > 0 || p.lostAtomic > 0 {
 			p.addExtra()
