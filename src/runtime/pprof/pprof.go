@@ -759,6 +759,10 @@ var cpu struct {
 // for syscall.SIGPROF, but note that doing so may break any profiling
 // being done by the main program.
 func StartCPUProfile(w io.Writer) error {
+	return startCPUProfile(w, runtime.ProfileModeDef)
+}
+
+func startCPUProfile(w io.Writer, mode runtime.ProfileMode) error {
 	// The runtime routines allow a variable profiling rate,
 	// but in practice operating systems cannot trigger signals
 	// at more than about 500 Hz, and our processing of the
@@ -780,14 +784,13 @@ func StartCPUProfile(w io.Writer) error {
 		return fmt.Errorf("cpu profiling already in use")
 	}
 	cpu.profiling = true
-	runtime.SetCPUProfileRate(hz)
+	runtime.SetCPUProfileRateMode(hz, mode)
 	go profileWriter(w)
 	return nil
 }
 
 func StartCPUProfileTagOnly(w io.Writer) error {
-	runtime.SetCPUProfileMode(runtime.ProfileModeTagOnly)
-	return StartCPUProfile(w)
+	return startCPUProfile(w, runtime.ProfileModeTagOnly)
 }
 
 // readProfile, provided by the runtime, returns the next chunk of
@@ -823,6 +826,10 @@ func profileWriter(w io.Writer) {
 // StopCPUProfile only returns after all the writes for the
 // profile have completed.
 func StopCPUProfile() {
+	stopCPUProfile(runtime.ProfileModeDef)
+}
+
+func stopCPUProfile(mode runtime.ProfileMode) {
 	cpu.Lock()
 	defer cpu.Unlock()
 
@@ -830,13 +837,12 @@ func StopCPUProfile() {
 		return
 	}
 	cpu.profiling = false
-	runtime.SetCPUProfileRate(0)
+	runtime.SetCPUProfileRateMode(0,mode)
 	<-cpu.done
 }
 
 func StopCPUProfileTagOnly() {
-	runtime.SetCPUProfileMode(runtime.ProfileModeDef)
-	StopCPUProfile()
+	stopCPUProfile(runtime.ProfileModeTagOnly)
 }
 
 // countBlock returns the number of records in the blocking profile.

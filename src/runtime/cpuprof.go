@@ -60,6 +60,14 @@ var cpuprof cpuProfile
 // the testing package's -test.cpuprofile flag instead of calling
 // SetCPUProfileRate directly.
 func SetCPUProfileRate(hz int) {
+	setCPUProfileRate(hz, ProfileModeDef)
+}
+
+func SetCPUProfileRateMode(hz int, mode ProfileMode) {
+	setCPUProfileRate(hz, mode)
+}
+
+func setCPUProfileRate(hz int, mode ProfileMode) {
 	// Clamp hz to something reasonable.
 	if hz < 0 {
 		hz = 0
@@ -77,6 +85,7 @@ func SetCPUProfileRate(hz int) {
 		}
 
 		cpuprof.on = true
+		cpuprof.mode = mode
 		cpuprof.log = newProfBuf(1, 1<<17, 1<<14)
 		hdr := [1]uint64{uint64(hz)}
 		cpuprof.log.write(nil, nanotime(), hdr[:], nil)
@@ -84,16 +93,9 @@ func SetCPUProfileRate(hz int) {
 	} else if cpuprof.on {
 		setcpuprofilerate(0)
 		cpuprof.on = false
+		cpuprof.mode = mode
 		cpuprof.addExtra()
 		cpuprof.log.close()
-	}
-	unlock(&cpuprof.lock)
-}
-
-func SetCPUProfileMode(mode ProfileMode) {
-	lock(&cpuprof.lock)
-	if mode == ProfileModeTagOnly {
-		cpuprof.mode = mode
 	}
 	unlock(&cpuprof.lock)
 }
