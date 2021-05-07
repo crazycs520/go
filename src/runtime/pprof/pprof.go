@@ -785,6 +785,11 @@ func StartCPUProfile(w io.Writer) error {
 	return nil
 }
 
+func StartCPUProfileTagOnly(w io.Writer) error {
+	runtime.SetCPUProfileMode(runtime.ProfileModeTagOnly)
+	return StartCPUProfile(w)
+}
+
 // readProfile, provided by the runtime, returns the next chunk of
 // binary CPU profiling stack trace data, blocking until data is available.
 // If profiling is turned off and all the profile data accumulated while it was
@@ -827,6 +832,11 @@ func StopCPUProfile() {
 	cpu.profiling = false
 	runtime.SetCPUProfileRate(0)
 	<-cpu.done
+}
+
+func StopCPUProfileTagOnly() {
+	runtime.SetCPUProfileMode(runtime.ProfileModeDef)
+	StopCPUProfile()
 }
 
 // countBlock returns the number of records in the blocking profile.

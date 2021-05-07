@@ -18,11 +18,19 @@ import (
 	"unsafe"
 )
 
+type ProfileMode = int8
+
 const maxCPUProfStack = 64
+
+const (
+	ProfileModeDef     ProfileMode = 0
+	ProfileModeTagOnly ProfileMode = 1
+)
 
 type cpuProfile struct {
 	lock mutex
-	on   bool     // profiling is on
+	on   bool // profiling is on
+	mode ProfileMode
 	log  *profBuf // profile events written here
 
 	// extra holds extra stacks accumulated in addNonGo
@@ -82,6 +90,14 @@ func SetCPUProfileRate(hz int) {
 	unlock(&cpuprof.lock)
 }
 
+func SetCPUProfileMode(mode ProfileMode) {
+	lock(&cpuprof.lock)
+	if mode == ProfileModeTagOnly {
+		cpuprof.mode = mode
+	}
+	unlock(&cpuprof.lock)
+}
+
 // add adds the stack trace to the profile.
 // It is called from signal handlers and other limited environments
 // and cannot allocate memory or acquire locks that might be
@@ -92,6 +108,10 @@ func (p *cpuProfile) add(gp *g, stk []uintptr) {
 	// Simple cas-lock to coordinate with setcpuprofilerate.
 	for !atomic.Cas(&prof.signalLock, 0, 1) {
 		osyield()
+	}
+
+	if p.mode == ProfileModeTagOnly {
+		stk = nil
 	}
 
 	if prof.hz != 0 { // implies cpuprof.log != nil
